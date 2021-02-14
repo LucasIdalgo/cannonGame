@@ -2,16 +2,23 @@ package br.com.progiv.cannongame;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
+import android.os.Build;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+
+import androidx.annotation.NonNull;
+
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -200,7 +207,7 @@ public class CannonView extends SurfaceView implements SurfaceHolder.Callback{
 
     //chamado repetidamente por CannonThread para atualizar elementos do jogo
     private  void updatePositions(double elapsedTimeMS){
-        double interval = elapsedTimeMS*1000.0; //converte em segundos
+        double interval = elapsedTimeMS/1000.0; //converte em segundos
 
         //atualizar a posição da bala, se estiver na tela
         if(cannon.getCannonBall()!=null)
@@ -221,13 +228,13 @@ public class CannonView extends SurfaceView implements SurfaceHolder.Callback{
             timeLeft=0.0;
             gameOver=true; //jogo terminou
             cannonThread.setRunning(false); //termina thread
-            showGameOverDialog("Você perdeu"); //mostra caixa de diálogo
+            showGameOverDialog(R.string.lose); //mostra caixa de diálogo
         }
 
         //se todas as peças foram atingidas
         if(targets.isEmpty()){
             cannonThread.setRunning(false);
-            showGameOverDialog("Você ganhou");
+            showGameOverDialog(R.string.win);
             gameOver=true;
         }
     }
@@ -240,5 +247,221 @@ public class CannonView extends SurfaceView implements SurfaceHolder.Callback{
         //calcular a distancia do toque a partir do centro
         double centerMinusY = (screenHeight/2-touchPoint.y);
         double angle =0; //inicializa o ângulo com 0
+
+        //calcular o angulo do cano em relação a horizontal
+        angle=Math.atan2(touchPoint.x, centerMinusY);
+
+        //apontar o cano para o ponto onde a tela foi tocada
+        cannon.align(angle);
+
+        //disparar a bala, caso não haja uma na tela
+        if(cannon.getCannonBall()==null || !cannon.getCannonBall().isOnScreen()){
+            cannon.fireCannonBall();
+            shotsFired++;
+        }
+    }
+
+    //exibir um componente AlertDialog quando o jogo terminar
+    private void showGameOverDialog(final int messageId){
+        //ajustar depois
+
+        activity.runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        showSystemBars();
+                        dialogDisplayed = true;
+                        //gameResult.setCancelable(false); //modeal dialog
+                        //gameResult.show(activity.getFragmentManager(),"results");
+                    }
+                }
+        );
+    }
+
+    //desenha o jogo no objeto Canvas
+    public void drawGameElement(Canvas canvas){
+        //limpar o plano de fundo
+        canvas.drawRect(0,0,canvas.getHeight(),canvas.getWidth(),backgroundPaint);
+
+        //exibir tempo restante
+        canvas.drawText(getResources().getString(R.string.time_remaining_format, timeLeft),50,100,textPaint);
+
+        //desenhar o canhão
+        cannon.draw(canvas);
+
+        //desenhar elementos do jogo
+        if (cannon.getCannonBall()!=null && cannon.getCannonBall().isOnScreen()){
+            cannon.getCannonBall().draw(canvas);
+        }
+
+        //desenhar a barreira
+        blocker.draw(canvas);
+
+        //desenhar os alvos
+        for(GameElement target:targets){
+            target.draw(canvas);
+        }
+    }
+
+    //teste de colisão
+    public void testForCollision(){
+        //remove alvo que a bala toca
+        if (cannon.getCannonBall()!=null && cannon.getCannonBall().isOnScreen()){
+            for(int n=0;n<targets.size();n++){
+                if(cannon.getCannonBall().collidesWidth(targets.get(n))){
+                    targets.get(n).playSound(); //reproduz som de acerto no alvo
+                    timeLeft += targets.get(n).getHitReward(); //adiciona ao tempo restante o tempo de recompensa
+                    cannon.removeCannonBall(); //remover a bala
+                    targets.remove(n); //remove alvo do array
+                    n--;
+                    break;
+                }
+            }
+        }else{
+            cannon.removeCannonBall();
+        }
+
+        //verificar se a bala colide com a barreira
+        if (cannon.getCannonBall()!=null && cannon.getCannonBall().collidesWidth(blocker)){
+            blocker.playSound();
+
+            //inverter direção da bala
+            cannon.getCannonBall().reverseVelocityX();
+
+            //subtrair tempo pela penalidade
+            timeLeft -= blocker.getMissPenalty();
+        }
+    }
+
+    //interrompe o jogo - método onPause de CannonGameFragment
+    public void stopGame(){
+        if(cannonThread != null){
+            cannonThread.setRunning(false);
+        }
+    }
+
+    //libera recursos - método ondestoy CannonGameView
+    public void releaseResoucers(){
+        soundPool.release(); //libera todos os recursos usados pelo soundPool
+        soundPool = null;
+    }
+
+    @Override
+    public void surfaceCreated(@NonNull SurfaceHolder holder) {
+        if(!dialogDisplayed){
+            newGame();
+            cannonThread = new CannonThread(holder);
+            cannonThread.setRunning(true);
+            cannonThread.start();
+        }
+    }
+
+    //chamado quando o tamanho da superficie muda
+    @Override
+    public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
+
+    }
+
+    @Override
+    public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+        boolean retry = true;
+        cannonThread.setRunning(false);
+        while (retry){
+            try {
+                cannonThread.join(); //espera cannonThread terminar
+                retry = false;
+            }catch (InterruptedException e){
+                Log.e(TAG, "Thread interrompida",e);
+            }
+        }
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        //obter valor int representado pelo tipo de ação que causou isso
+        int action=event.getAction();
+
+        //o usuario tocou na tela ou arrastou o dedo
+        if(action ==MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE){
+            alignAndFireCannonBall(event);
+        }
+        return true;
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        screenWidth = w; //armazena a largura do CannonView
+        screenHeight = h; //Armazena a altura
+
+        //configurar a propriedade do texto:
+        textPaint.setTextSize((int)(TEXT_SIZE_PERCENT * screenHeight));
+        textPaint.setAntiAlias(true); //suaviza o texto
+    }
+
+    //subclasse de thread para controlar o loop do jogo
+    private class CannonThread extends Thread{
+        private SurfaceHolder surfaceHolder; //para manipular o canvas
+        private boolean threadIsRunning = true; //executando por padrão
+
+        //inicializar o surfaceHolder
+        public CannonThread(SurfaceHolder holder){
+            surfaceHolder = holder;
+            setName("CannonThread");
+        }
+
+        //altera estado de execução
+        public void setRunning(boolean running){
+            threadIsRunning=running;
+        }
+
+        @Override
+        public void run() {
+            Canvas canvas = null;
+            long previousFrameTime = System.currentTimeMillis();
+            while (threadIsRunning){
+                try {
+                    canvas=surfaceHolder.lockCanvas(null);
+
+                    //bloquear o surfaceholder para desenhar
+                    synchronized (surfaceHolder){
+                        long currentTime = System.currentTimeMillis();
+                        double elapsedTimeMS = currentTime - previousFrameTime;
+                        totalElapsedTime += elapsedTimeMS/1000.0;
+                        updatePositions(elapsedTimeMS);
+                        testForCollision();
+                        drawGameElement(canvas); //desenha o canvas
+                        previousFrameTime=currentTime;
+                    }
+                }finally {
+                    if(canvas!=null){
+                        surfaceHolder.unlockCanvasAndPost(canvas);
+                    }
+                }
+            }
+        }
+    }
+
+    //oculta barra de sistema e de aplicativo
+    private void hideSystemBars(){
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.KITKAT)
+            setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE
+            );
+    }
+
+    //mostra as barras de sistema e a barra de aplicativo
+    private void showSystemBars(){
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.KITKAT){
+            setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+            );
+        }
     }
 }
