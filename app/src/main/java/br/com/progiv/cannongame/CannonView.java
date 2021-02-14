@@ -2,8 +2,11 @@ package br.com.progiv.cannongame;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Color;
 import android.graphics.Paint;
+import android.media.AudioAttributes;
 import android.media.SoundPool;
+import android.util.AttributeSet;
 import android.util.SparseIntArray;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -77,8 +80,49 @@ public class CannonView extends SurfaceView implements SurfaceHolder.Callback{
     private Paint textPaint; //objeto Paint usado para desenhar texto
     private Paint backgroundPaint; //objeto Paint usado para limpar a área de desenho
 
-    public CannonView(Context context) {
-        super(context);
+    //construtor
+    public CannonView(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        activity = (Activity)context; //armazena referencia para MainActivity
+
+        //registra o receptor de SurfaceHolder
+        getHolder().addCallback(this);
+
+        //configurar atributo de áudio
+        AudioAttributes.Builder attrBuilder = new AudioAttributes.Builder();
+        attrBuilder.setUsage(AudioAttributes.USAGE_GAME);
+
+        //inicializar o SoundPool para reproduzir os três efeitos do app
+        SoundPool.Builder builder = new SoundPool.Builder();
+        builder.setMaxStreams(1);
+        builder.setAudioAttributes(attrBuilder.build());
+        soundPool = builder.build();
+
+        //cria objeto Map de sons e carrega os sons previamente
+        soundMap = new SparseIntArray(3); //criando um array de som
+        soundMap.put(TARGET_SOUND_ID, soundPool.load(context, R.raw.target_hit,1));
+        soundMap.put(CANNON_SOUND_ID, soundPool.load(context, R.raw.cannon_fire,1));
+        soundMap.put(BLOCKER_SOUND_ID, soundPool.load(context, R.raw.blocker_hit,1));
+
+        //texto de tempo
+        textPaint = new Paint();
+        backgroundPaint = new Paint();
+        backgroundPaint.setColor(Color.WHITE);
+    }
+
+    //obtém a largura de tela do jogo
+    public int getScreenWidth() {
+        return screenWidth;
+    }
+
+    //obtém a altura de tela do jogo
+    public int getScreenHeight(){
+        return screenHeight;
+    }
+
+    //reproduz um som com o soundId em soundMap
+    public void playSound(int soundId){
+        soundPool.play(soundMap.get(soundId), 1, 1, 1, 0, 1f);
     }
 
     @Override
