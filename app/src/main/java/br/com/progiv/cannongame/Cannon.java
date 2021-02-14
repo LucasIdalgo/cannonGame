@@ -40,7 +40,7 @@ public class Cannon {
         int velocityY = (int)(CannonView.CANNONBALL_SPEED_PERCENT*view.getScreenWidth()*-Math.cos(barrelAngle));
 
         //calcular o raio da bala
-        int radius = (int)(view.getCreenHeight()*CannonView.CANNONBALL_RADIUS_PERCENT);
+        int radius = (int)(view.getScreenHeight()*CannonView.CANNONBALL_RADIUS_PERCENT);
 
         //constrói a bala e a posiciona no canhão
         cannonBall = new CannonBall(
