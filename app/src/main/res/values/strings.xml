@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">cannonGame</string>
+    <string name="results_format">Tiros dados: %1$d\nTempo: %2$.1f</string>
+    <string name="reset_game">Reset Game</string>
+    <string name="win">Você ganhou!</string>
+    <string name="lose">Você perdeu!</string>
+    <string name="time_remaining_format">Tempo restante: %.1f segundos</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
 </resources>
